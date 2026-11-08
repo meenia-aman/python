@@ -1,0 +1,37 @@
+from typing import Protocol
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.module_v3.user.model import User
+
+
+class UserRepository(Protocol):
+    async def get_by_id(self, user_id: UUID) -> User | None: ...
+    async def get_by_email(self, email: str) -> User | None: ...
+    async def add(self, user: User) -> User: ...
+    async def get_all(self) -> list[User]: ...
+
+
+class SqlAlchemyUserRepository(UserRepository):
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get_by_id(self, user_id: UUID) -> User | None:
+        return await self.session.get(User, user_id)
+
+    async def get_by_email(self, email: str) -> User | None:
+        stmt = select(User).where(User.email == email)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def add(self, user: User) -> User:
+        self.session.add(user)
+        await self.session.flush()
+        return user
+
+    async def get_all(self) -> list[User]:
+        stmt = select(User).order_by(User.created_at.desc())
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
