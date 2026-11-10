@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FastAPI Dependencies with Yield: Scope, Context Managers & Lifecycle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --surface-1: #131b26;
+      --surface-2: #1b2636;
+      --surface-3: #223247;
+      --border: #2a3a50;
+      --border-focus: #3b82f6;
+      --text: #f1f5f9;
+      --text-dim: #94a3b8;
+      --text-muted: #64748b;
+      --accent-teal: #14b8a6;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-blue: #38bdf8;
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      padding: 2rem 1.5rem 5rem 1.5rem;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 2rem;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      background: rgba(20, 184, 166, 0.15);
+      color: var(--accent-teal);
+      border: 1px solid rgba(20, 184, 166, 0.3);
+      margin-bottom: 0.75rem;
+    }
+
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(to right, #ffffff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      color: var(--text-dim);
+      max-width: 850px;
+    }
+
+    /* Tabs */
+    .tab-nav {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2rem;
+      overflow-x: auto;
+      padding-bottom: 1px;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--font-sans);
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.75rem 1.25rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      border-radius: 6px 6px 0 0;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .tab-btn.active {
+      color: var(--accent-teal);
+      border-bottom-color: var(--accent-teal);
+      background: rgba(20, 184, 166, 0.08);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cards & Grid */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      position: relative;
+    }
+
+    .card.highlight-teal {
+      border-color: rgba(20, 184, 166, 0.4);
+      background: linear-gradient(180deg, rgba(20, 184, 166, 0.05) 0%, var(--surface-1) 100%);
+    }
+
+    .card.highlight-rose {
+      border-color: rgba(244, 63, 94, 0.4);
+      background: linear-gradient(180deg, rgba(244, 63, 94, 0.05) 0%, var(--surface-1) 100%);
+    }
+
+    .card.highlight-amber {
+      border-color: rgba(245, 158, 11, 0.4);
+      background: linear-gradient(180deg, rgba(245, 158, 11, 0.05) 0%, var(--surface-1) 100%);
+    }
+
+    .card h3 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card p {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      margin-bottom: 1rem;
+    }
+
+    /* Code Blocks */
+    pre {
+      background: #080c13;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #e2e8f0;
+      margin: 1rem 0;
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88em;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+      color: var(--accent-blue);
+    }
+
+    pre code {
+      background: transparent;
+      padding: 0;
+      color: inherit;
+    }
+
+    .kw { color: #f43f5e; font-weight: 600; }
+    .fn { color: #38bdf8; }
+    .str { color: #10b981; }
+    .comm { color: #64748b; font-style: italic; }
+    .num { color: #f59e0b; }
+
+    /* Timeline / Lifecycle Visual */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin: 1.5rem 0;
+      position: relative;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 1.75rem;
+      top: 1rem;
+      bottom: 1rem;
+      width: 2px;
+      background: var(--border);
+    }
+
+    .step-item {
+      display: flex;
+      gap: 1.25rem;
+      position: relative;
+    }
+
+    .step-icon {
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      z-index: 1;
+    }
+
+    .step-item.success .step-icon {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: var(--accent-emerald);
+    }
+
+    .step-item.warning .step-icon {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: var(--accent-amber);
+    }
+
+    .step-item.danger .step-icon {
+      background: rgba(244, 63, 94, 0.15);
+      border-color: rgba(244, 63, 94, 0.4);
+      color: var(--accent-rose);
+    }
+
+    .step-content {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      flex-grow: 1;
+    }
+
+    .step-content h4 {
+      font-size: 1rem;
+      margin-bottom: 0.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .step-tag {
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      background: var(--surface-3);
+      color: var(--text-dim);
+    }
+
+    /* Comparison Table */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 1.5rem 0;
+      background: var(--surface-1);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.92rem;
+    }
+
+    th {
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 600;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      vertical-align: top;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .pill {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+    }
+
+    .pill-teal { background: rgba(20, 184, 166, 0.2); color: var(--accent-teal); }
+    .pill-rose { background: rgba(244, 63, 94, 0.2); color: var(--accent-rose); }
+    .pill-amber { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+
+    /* Callout */
+    .callout {
+      padding: 1.25rem;
+      border-radius: 8px;
+      margin: 1.25rem 0;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      border-left: 4px solid;
+    }
+
+    .callout.info {
+      background: rgba(56, 189, 248, 0.08);
+      border-color: var(--accent-blue);
+      color: #bae6fd;
+    }
+
+    .callout.danger {
+      background: rgba(244, 63, 94, 0.08);
+      border-color: var(--accent-rose);
+      color: #fecdd3;
+    }
+
+    .callout.success {
+      background: rgba(16, 185, 129, 0.08);
+      border-color: var(--accent-emerald);
+      color: #a7f3d0;
+    }
+
+    .callout p {
+      margin: 0;
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    /* Terminal output */
+    .terminal-box {
+      background: #05080e;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #cbd5e1;
+      overflow-x: auto;
+      margin: 1rem 0;
+      line-height: 1.6;
+    }
+
+    .log-info { color: #38bdf8; }
+    .log-warn { color: #f59e0b; }
+    .log-err { color: #f43f5e; font-weight: bold; }
+    .log-success { color: #10b981; }
+    .log-dim { color: #64748b; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <span class="badge">Deep Dive Guide</span>
+    <h1>FastAPI Dependencies with Yield & Scope</h1>
+    <p class="subtitle">
+      Understand how FastAPI turns generators into context managers, the critical difference between <code>scope="function"</code> and <code>scope="request"</code>, and how Module 1's explicit Unit of Work compares with Module 3.
+    </p>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" onclick="showTab('tab-yield')">1. How Yield Works</button>
+    <button class="tab-btn" onclick="showTab('tab-scope')">2. Function vs Request Scope</button>
+    <button class="tab-btn" onclick="showTab('tab-logs')">3. Live Log Evidence</button>
+    <button class="tab-btn" onclick="showTab('tab-arch')">4. Module 1 vs Module 3</button>
+    <button class="tab-btn" onclick="showTab('tab-workers')">5. Background Workers & Celery</button>
+  </nav>
+
+  <!-- TAB 1: HOW YIELD WORKS -->
+  <section id="tab-yield" class="tab-content active">
+    <div class="card highlight-teal">
+      <h3>The Anatomy of a Yield Dependency</h3>
+      <p>
+        In standard Python, a function with <code>yield</code> is a generator. FastAPI uses Python's <code>contextlib.asynccontextmanager</code> and <code>AsyncExitStack</code> internally to transform that generator into a <strong>two-phase execution lifecycle</strong> wrapped around your endpoint.
+      </p>
+
+      <pre><code><span class="kw">async def</span> <span class="fn">get_db</span>() -&gt; AsyncGenerator[AsyncSession, None]:
+    <span class="comm"># ────── [PHASE 1: BEFORE YIELD] ──────</span>
+    <span class="comm"># Runs BEFORE the route handler executes</span>
+    session = AsyncSessionLocal()
+    <span class="kw">try</span>:
+        <span class="kw">yield</span> session  <span class="comm"># &lt;── Injected into your route handler!</span>
+        
+        <span class="comm"># ────── [PHASE 2: AFTER YIELD] ──────</span>
+        <span class="comm"># Runs AFTER the route handler returns</span>
+        <span class="kw">await</span> session.commit()
+    <span class="kw">except</span> Exception:
+        <span class="kw">await</span> session.rollback()
+        <span class="kw">raise</span>
+    <span class="kw">finally</span>:
+        <span class="comm"># Always runs guaranteed</span>
+        <span class="kw">await</span> session.close()</code></pre>
+    </div>
+
+    <div class="grid-2" style="margin-top: 1.5rem;">
+      <div class="card">
+        <h3>Phase 1: Before <code>yield</code></h3>
+        <p>Runs when the incoming request arrives at FastAPI before calling your route function:</p>
+        <ul style="padding-left: 1.25rem; color: var(--text-dim); font-size: 0.92rem; line-height: 1.8;">
+          <li>Connects to the database / checks out a session from the connection pool.</li>
+          <li>Optionally starts a transaction via <code>session.begin()</code>.</li>
+          <li>The yielded object (<code>session</code>) is passed as the argument to the path operation function.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Phase 2: After <code>yield</code> (Teardown)</h3>
+        <p>Runs after the route handler has executed:</p>
+        <ul style="padding-left: 1.25rem; color: var(--text-dim); font-size: 0.92rem; line-height: 1.8;">
+          <li>If the route handler succeeded: executes the lines immediately following <code>yield</code> (e.g. <code>commit()</code>).</li>
+          <li>If the route threw an error: FastAPI re-raises that error into the generator at the yield point, triggering <code>except Exception:</code> and rolling back!</li>
+          <li>In <code>finally:</code>, the session is cleanly closed.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout info">
+      <div>💡</div>
+      <div>
+        <strong>How Context Managers work inside Yield:</strong><br>
+        In Module 3, we wrote:
+        <pre style="margin: 0.5rem 0;"><code>async with AsyncSessionLocal() as session:
+    async with session.begin():
+        yield session</code></pre>
+        FastAPI enters both context managers before <code>yield</code>. When the endpoint finishes, FastAPI resumes the generator, causing Python to exit <code>session.begin()</code> (which commits!) and exit <code>AsyncSessionLocal()</code> (which closes the connection!).
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 2: FUNCTION VS REQUEST SCOPE -->
+  <section id="tab-scope" class="tab-content">
+    <div class="callout danger">
+      <div>⚠️</div>
+      <div>
+        <strong>The Critical Difference: When does teardown execute?</strong><br>
+        In FastAPI 0.115+, dependencies support <code>scope="function"</code> vs <code>scope="request"</code> (the default). The choice determines whether database commits happen <em>before</em> or <em>after</em> the client receives the HTTP response!
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Function Scope Card -->
+      <div class="card highlight-teal">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <h3 style="margin: 0;">scope="function"</h3>
+          <span class="pill pill-teal">Module 3 Standard</span>
+        </div>
+        <p>The dependency teardown runs <strong>before</strong> the HTTP response is dispatched to the client.</p>
+
+        <div class="timeline">
+          <div class="step-item success">
+            <div class="step-icon">1</div>
+            <div class="step-content">
+              <h4>Setup (Before Yield) <span class="step-tag">Phase 1</span></h4>
+              <p>Opens <code>AsyncSession</code>.</p>
+            </div>
+          </div>
+          <div class="step-item success">
+            <div class="step-icon">2</div>
+            <div class="step-content">
+              <h4>Route Handler <span class="step-tag">Endpoint</span></h4>
+              <p>Executes order logic, returns dict/schema.</p>
+            </div>
+          </div>
+          <div class="step-item success">
+            <div class="step-icon">3</div>
+            <div class="step-content">
+              <h4>Teardown (After Yield) <span class="step-tag">Phase 2</span></h4>
+              <p><strong>Commits transaction &amp; closes session NOW!</strong></p>
+            </div>
+          </div>
+          <div class="step-item success">
+            <div class="step-icon">4</div>
+            <div class="step-content">
+              <h4>Response Sent to Client <span class="step-tag">HTTP Send</span></h4>
+              <p>If commit succeeded: <strong>200 / 201 OK</strong><br>If commit failed: <strong>500 Error</strong></p>
+            </div>
+          </div>
+        </div>
+        <p style="color: var(--accent-emerald); font-weight: 600;">✅ Completely Safe: Client is never sent false success if commit crashes.</p>
+      </div>
+
+      <!-- Request Scope Card -->
+      <div class="card highlight-rose">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <h3 style="margin: 0;">scope="request" (Default)</h3>
+          <span class="pill pill-rose">Dangerous for Commits</span>
+        </div>
+        <p>The dependency teardown runs <strong>after</strong> the HTTP response has already streamed to the client.</p>
+
+        <div class="timeline">
+          <div class="step-item success">
+            <div class="step-icon">1</div>
+            <div class="step-content">
+              <h4>Setup (Before Yield) <span class="step-tag">Phase 1</span></h4>
+              <p>Opens <code>AsyncSession</code>.</p>
+            </div>
+          </div>
+          <div class="step-item success">
+            <div class="step-icon">2</div>
+            <div class="step-content">
+              <h4>Route Handler <span class="step-tag">Endpoint</span></h4>
+              <p>Executes order logic, returns dict/schema.</p>
+            </div>
+          </div>
+          <div class="step-item danger">
+            <div class="step-icon">3</div>
+            <div class="step-content">
+              <h4>Response Sent to Client <span class="step-tag">HTTP Send</span></h4>
+              <p><strong>Client ALREADY received 200 OK!</strong></p>
+            </div>
+          </div>
+          <div class="step-item danger">
+            <div class="step-icon">4</div>
+            <div class="step-content">
+              <h4>Teardown (After Yield) <span class="step-tag">Phase 2</span></h4>
+              <p>Commits transaction. <strong>If commit fails, it's too late!</strong></p>
+            </div>
+          </div>
+        </div>
+        <p style="color: var(--accent-rose); font-weight: 600;">❌ Risky: Client thinks order succeeded, but DB rolled back!</p>
+      </div>
+    </div>
+
+    <!-- Comparison Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Characteristic</th>
+            <th><code>scope="function"</code></th>
+            <th><code>scope="request"</code> (Default)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>When does code after <code>yield</code> run?</strong></td>
+            <td>Immediately after endpoint returns, <em>before</em> HTTP response is sent.</td>
+            <td>After response headers and body are fully sent to the client.</td>
+          </tr>
+          <tr>
+            <td><strong>What if <code>session.commit()</code> fails?</strong></td>
+            <td>FastAPI catches exception and sends <strong>HTTP 500</strong> to the client.</td>
+            <td>Client already got <strong>HTTP 200</strong>. Server logs an unhandled error later.</td>
+          </tr>
+          <tr>
+            <td><strong>Dependency caching (<code>use_cache=True</code>)</strong></td>
+            <td>Caches within the function call graph.</td>
+            <td>Caches across the whole request.</td>
+          </tr>
+          <tr>
+            <td><strong>Best use case</strong></td>
+            <td><strong>Database transactions, Unit of Work, write operations.</strong></td>
+            <td>Read-only resources, client metrics, request-duration loggers.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TAB 3: LIVE LOG EVIDENCE -->
+  <section id="tab-logs" class="tab-content">
+    <div class="card">
+      <h3>Live ASGI Execution Traces</h3>
+      <p>
+        These logs were captured by executing live requests against the project using our demo endpoints in <code>src/demo_yield.py</code>:
+      </p>
+
+      <h4 style="margin: 1.5rem 0 0.5rem 0; color: var(--accent-teal);">Scenario A: Clean Run with <code>scope="function"</code></h4>
+      <div class="terminal-box">
+<span class="log-info">[1. FUNC-SCOPE] BEFORE yield: Opening database session S1...</span>
+<span class="log-dim">[2. ROUTE] Executing route logic using Session-Func-Scope-101</span>
+<span class="log-dim">[3. ROUTE] Route finished; returning response dict.</span>
+<span class="log-success">[4. FUNC-SCOPE] AFTER yield: Committing transaction on S1 (Runs BEFORE response delivery)...</span>
+<span class="log-success">[5. FUNC-SCOPE] FINALLY: Closing database session S1.</span>
+<span class="log-info">🚀 [ASGI SEND] http.response.start -&gt; HTTP Status: 200</span>
+<span class="log-dim">📦 [ASGI SEND] http.response.body -&gt; Payload delivered to client: {"scope":"function"}</span>
+      </div>
+      <p style="font-size: 0.88rem; color: var(--text-muted);">
+        Notice: Steps [4] Commit and [5] Close execute <strong>before</strong> <code>http.response.start</code>!
+      </p>
+
+      <h4 style="margin: 1.5rem 0 0.5rem 0; color: var(--accent-amber);">Scenario B: Clean Run with <code>scope="request"</code></h4>
+      <div class="terminal-box">
+<span class="log-info">[1. REQ-SCOPE] BEFORE yield: Opening database session S2...</span>
+<span class="log-dim">[2. ROUTE] Executing route logic using Session-Req-Scope-202</span>
+<span class="log-dim">[3. ROUTE] Route finished; returning response dict.</span>
+<span class="log-warn">🚀 [ASGI SEND] http.response.start -&gt; HTTP Status: 200</span>
+<span class="log-dim">📦 [ASGI SEND] http.response.body -&gt; Payload delivered to client: {"scope":"request"}</span>
+<span class="log-warn">[4. REQ-SCOPE] AFTER yield: Committing transaction on S2 (Runs AFTER response was sent!)...</span>
+<span class="log-dim">[5. REQ-SCOPE] FINALLY: Closing database session S2.</span>
+      </div>
+      <p style="font-size: 0.88rem; color: var(--text-muted);">
+        Notice: <code>http.response.start</code> is sent <strong>first</strong>, and only then does step [4] Commit run!
+      </p>
+
+      <h4 style="margin: 1.5rem 0 0.5rem 0; color: var(--accent-rose);">Scenario C: What happens when DB Commit FAILS?</h4>
+      <div class="grid-2">
+        <div>
+          <strong style="color: var(--accent-teal);">With <code>scope="function"</code>:</strong>
+          <div class="terminal-box">
+<span class="log-dim">[FUNC-FAIL] BEFORE yield: Opening session...</span>
+<span class="log-dim">[ROUTE] Route finished successfully.</span>
+<span class="log-info">[FUNC-FAIL] AFTER yield: Database commit starting...</span>
+<span class="log-err">❌ [FUNC-FAIL] Database commit failed: IntegrityError... Rolling back...</span>
+<span class="log-dim">[FUNC-FAIL] FINALLY: Session closed.</span>
+<span class="log-success">🚀 [ASGI SEND] http.response.start -&gt; HTTP Status: 500</span>
+<span class="log-dim">📦 Client receives: Internal Server Error</span>
+          </div>
+          <p style="color: var(--accent-emerald); font-size: 0.85rem;">Client correctly receives HTTP 500. Correct behavior!</p>
+        </div>
+
+        <div>
+          <strong style="color: var(--accent-rose);">With <code>scope="request"</code>:</strong>
+          <div class="terminal-box">
+<span class="log-dim">[REQ-FAIL] BEFORE yield: Opening session...</span>
+<span class="log-dim">[ROUTE] Route finished successfully.</span>
+<span class="log-err">🚀 [ASGI SEND] http.response.start -&gt; HTTP Status: 200</span>
+<span class="log-err">📦 Client receives: 200 OK (SUCCESS)</span>
+<span class="log-info">[REQ-FAIL] AFTER yield: Database commit starting...</span>
+<span class="log-err">❌ [REQ-FAIL] Database commit failed: IntegrityError... Rolling back...</span>
+<span class="log-dim">[REQ-FAIL] FINALLY: Session closed.</span>
+          </div>
+          <p style="color: var(--accent-rose); font-size: 0.85rem;">Client received 200 OK, but database rolled back! Catastrophic bug.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 4: ARCHITECTURE COMPARISON -->
+  <section id="tab-arch" class="tab-content">
+    <div class="card">
+      <h3>Architecture Comparison: Module 1 vs Module 3</h3>
+      <p>
+        Both modules achieve atomic transactions across multiple repositories (Orders, Products, Emails, Users), but they do it in different architectural layers:
+      </p>
+
+      <div class="grid-2" style="margin-top: 1rem;">
+        <div class="card highlight-teal">
+          <h4>Module 1: Explicit Unit of Work</h4>
+          <p>Managed directly in your Python code via a custom class:</p>
+          <pre><code><span class="comm"># In OrderService</span>
+<span class="kw">async with</span> self.uow:
+    user = <span class="kw">await</span> self.uow.users.get(user_id)
+    product = <span class="kw">await</span> self.uow.products.get(prod_id)
+    product.stock -= count
+    <span class="kw">await</span> self.uow.orders.add(order)
+    <span class="kw">await</span> queue_email(self.uow.emails, ...)
+    
+    <span class="kw">await</span> self.uow.commit()  <span class="comm"># Explicit call!</span></code></pre>
+          <ul style="padding-left: 1.25rem; font-size: 0.88rem; color: var(--text-dim); line-height: 1.6;">
+            <li><strong>Who owns transaction:</strong> The Service class.</li>
+            <li><strong>Pros:</strong> Completely independent of FastAPI; easily runs in Celery workers, cron jobs, CLI scripts.</li>
+            <li><strong>Cons:</strong> Requires custom UoW classes (`UserUnitOfWork`, `OrderUnitOfWork`) for every domain combination.</li>
+          </ul>
+        </div>
+
+        <div class="card highlight-blue">
+          <h4>Module 3: Dependency-Owned Transaction</h4>
+          <p>Managed by FastAPI's dependency injection using yield &amp; function scope:</p>
+          <pre><code><span class="comm"># In src/module_v3/db.py</span>
+<span class="kw">async def</span> <span class="fn">get_db</span>() -&gt; AsyncGenerator[AsyncSession, None]:
+    <span class="kw">async with</span> AsyncSessionLocal() <span class="kw">as</span> session:
+        <span class="kw">async with</span> session.begin():
+            <span class="kw">yield</span> session
+
+SessionDep = Annotated[AsyncSession, Depends(get_db, scope=<span class="str">"function"</span>)]</code></pre>
+          <ul style="padding-left: 1.25rem; font-size: 0.88rem; color: var(--text-dim); line-height: 1.6;">
+            <li><strong>Who owns transaction:</strong> The HTTP API operation boundary.</li>
+            <li><strong>Pros:</strong> Zero boilerplate UoW classes; services never worry about calling commit/rollback.</li>
+            <li><strong>Cons:</strong> Tied to FastAPI's dependency system; background workers need their own transaction context.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 5: BACKGROUND WORKERS & CELERY -->
+  <section id="tab-workers" class="tab-content">
+    <div class="card highlight-amber">
+      <h3>The Dilemma: There is No FastAPI Request in Celery/Background Workers</h3>
+      <p>
+        In Celery, ARQ, Kafka consumers, or CLI scripts, FastAPI's dependency injection does not run. 
+        If our services no longer commit, who owns the transaction in a background worker?
+      </p>
+
+      <div class="callout info">
+        <div>💡</div>
+        <div>
+          <strong>The Golden Rule:</strong> <em>"Services never commit. The CALLER (boundary) owns the transaction."</em><br>
+          In HTTP, the caller is <code>SessionDep</code> (FastAPI). In a worker, the caller is an async context manager (<code>transaction_scope()</code>).
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top: 1.5rem;">
+        <div class="card">
+          <h4>1. Reusable Transaction Scope Context Manager</h4>
+          <p>Define a clean context manager in <code>db.py</code>:</p>
+          <pre><code><span class="kw">from</span> contextlib <span class="kw">import</span> asynccontextmanager
+
+<span class="comm"># The Universal Transaction Boundary</span>
+<span class="fn">@asynccontextmanager</span>
+<span class="kw">async def</span> <span class="fn">transaction_scope</span>():
+    <span class="kw">async with</span> AsyncSessionLocal() <span class="kw">as</span> session:
+        <span class="kw">async with</span> session.begin():
+            <span class="kw">yield</span> session
+        <span class="comm"># Automatically commits on exit!</span>
+        <span class="comm"># Automatically rolls back if an exception escaped!</span></code></pre>
+        </div>
+
+        <div class="card">
+          <h4>2. Composition Factory Helper</h4>
+          <p>Create a single helper that builds your service graph with any session:</p>
+          <pre><code><span class="kw">def</span> <span class="fn">build_order_service</span>(session: AsyncSession) -&gt; OrderService:
+    <span class="kw">return</span> OrderService(
+        order_repo=SqlAlchemyOrderRepository(session),
+        user_service=UserService(SqlAlchemyUserRepository(session)),
+        product_service=ProductService(SqlAlchemyProductRepository(session)),
+        email_service=EmailService(SqlAlchemyEmailRepository(session)),
+    )</code></pre>
+        </div>
+      </div>
+
+      <h4 style="margin: 1.5rem 0 0.5rem 0; color: var(--accent-emerald);">How to use it in Background Workers / Celery:</h4>
+      <pre><code><span class="fn">@celery_app.task</span>
+<span class="kw">async def</span> <span class="fn">process_order_worker</span>(order_payload: dict):
+    <span class="comm"># The worker opens the transaction boundary!</span>
+    <span class="kw">async with</span> transaction_scope() <span class="kw">as</span> session:
+        service = build_order_service(session)
+        <span class="kw">await</span> service.create_order(CreateOrderRequest(**order_payload))
+    
+    <span class="comm"># ✅ Automatic atomic commit here.</span>
+    <span class="comm"># ❌ If anything failed, rollback was executed automatically.</span></code></pre>
+
+      <h4 style="margin: 1.5rem 0 0.5rem 0; color: var(--accent-blue);">How FastAPI uses the EXACT same function:</h4>
+      <pre><code><span class="kw">async def</span> <span class="fn">get_db</span>():
+    <span class="kw">async with</span> transaction_scope() <span class="kw">as</span> session:
+        <span class="kw">yield</span> session
+
+SessionDep = Annotated[AsyncSession, Depends(get_db, scope=<span class="str">"function"</span>)]
+
+<span class="fn">@router.post</span>(<span class="str">"/orders"</span>)
+<span class="kw">async def</span> <span class="fn">create_order_endpoint</span>(data: CreateOrderRequest, session: SessionDep):
+    service = build_order_service(session)
+    <span class="kw">return await</span> service.create_order(data)</code></pre>
+
+      <div class="callout success">
+        <div>🎯</div>
+        <div>
+          <strong>Result:</strong> Zero code duplication! Both the HTTP API and the Background Worker share the exact same business logic, the exact same single-commit guarantee, and the exact same rollback-on-error safety.
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  function showTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    
+    const target = document.getElementById(tabId);
+    if (target) {
+      target.classList.add('active');
+    }
+    
+    const buttons = document.querySelectorAll('.tab-btn');
+    if (tabId === 'tab-yield') buttons[0].classList.add('active');
+    if (tabId === 'tab-scope') buttons[1].classList.add('active');
+    if (tabId === 'tab-logs') buttons[2].classList.add('active');
+    if (tabId === 'tab-arch') buttons[3].classList.add('active');
+    if (tabId === 'tab-workers') buttons[4].classList.add('active');
+  }
+</script>
+
+</body>
+</html>
